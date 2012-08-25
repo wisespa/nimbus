@@ -50,13 +50,21 @@ typedef enum {
  *   attributed string that inherits all of the label's current styles.
  * - Text is aligned vertically to the top of the bounds by default rather than centered. You can
  *   change this behavior using @link NIAttributedLabel::verticalTextAlignment verticalTextAlignment@endlink.
+ * - CoreText fills the frame with glyphs until they no longer fit. This is an important difference
+ *   from UILabel because it means that CoreText will not add any glyphs that won't fit in the
+ *   frame, while UILabel does. This can result in empty NIAttributedLabels if your frame is too
+ *   small where UILabel would draw clipped text. It is recommended that you use sizeToFit to get
+ *   the correct dimensions of the attributed label before setting the frame.
+ *
+ * NIAttributedLabel implements the UIAccessibilityContainer methods to expose each link as an
+ * accessibility item.
  *
  *      @ingroup NimbusAttributedLabel
  */
 @interface NIAttributedLabel : UILabel
 
 // When building for iOS 6.0 and higher use attributedText.
-@property (nonatomic, copy) NSAttributedString* attributedString NS_DEPRECATED_IOS(2_0, 6_0);
+@property (nonatomic, copy) NSAttributedString* attributedString;
 
 @property (nonatomic, assign) BOOL autoDetectLinks; // Default: NO
 @property (nonatomic, assign) NSTextCheckingType dataDetectorTypes; // Default: NSTextCheckingTypeLink
@@ -65,17 +73,17 @@ typedef enum {
 - (void)addLink:(NSURL *)urlLink range:(NSRange)range;
 - (void)removeAllExplicitLinks; // Removes all links that were added by addLink:range:. Does not remove autodetected links.
 
-@property (nonatomic, retain) UIColor* linkColor; // Default: [UIColor blueColor]
-@property (nonatomic, retain) UIColor* highlightedLinkBackgroundColor; // Default: [UIColor colorWithWhite:0.5 alpha:0.5
+@property (nonatomic, strong) UIColor* linkColor; // Default: [UIColor blueColor]
+@property (nonatomic, strong) UIColor* highlightedLinkBackgroundColor; // Default: [UIColor colorWithWhite:0.5 alpha:0.5
 @property (nonatomic, assign) BOOL linksHaveUnderlines; // Default: NO
-@property (nonatomic, retain) NSDictionary *attributesForLinks; // Default: nil
+@property (nonatomic, strong) NSDictionary *attributesForLinks; // Default: nil
 
 @property (nonatomic, assign) NIVerticalTextAlignment verticalTextAlignment; // Default: NIVerticalTextAlignmentTop
 @property (nonatomic, assign) CTUnderlineStyle underlineStyle;
 @property (nonatomic, assign) CTUnderlineStyleModifiers underlineStyleModifier;
 @property (nonatomic, assign) CGFloat shadowBlur; // Default: 0
 @property (nonatomic, assign) CGFloat strokeWidth;
-@property (nonatomic, retain) UIColor* strokeColor;
+@property (nonatomic, strong) UIColor* strokeColor;
 @property (nonatomic, assign) CGFloat textKern;
 
 - (void)setTextColor:(UIColor *)textColor range:(NSRange)range;
@@ -84,6 +92,10 @@ typedef enum {
 - (void)setStrokeWidth:(CGFloat)width range:(NSRange)range;
 - (void)setStrokeColor:(UIColor *)color range:(NSRange)range;
 - (void)setTextKern:(CGFloat)kern range:(NSRange)range;
+
+- (void)insertImage:(UIImage *)image atIndex:(NSInteger)index;
+- (void)insertImage:(UIImage *)image atIndex:(NSInteger)index margins:(UIEdgeInsets)margins;
+- (void)insertImage:(UIImage *)image atIndex:(NSInteger)index margins:(UIEdgeInsets)margins verticalTextAlignment:(NIVerticalTextAlignment)verticalTextAlignment;
 
 @property (nonatomic, assign) IBOutlet id<NIAttributedLabelDelegate> delegate;
 @end
@@ -100,18 +112,18 @@ typedef enum {
 /** @name Managing Selections */
 
 /**
- * Informs the delegate that a data detector result has been selected.
+ * Informs the receiver that a data detector result has been selected.
  *
- *      @param attributedLabel An attributed label informing the delegate of the selection.
+ *      @param attributedLabel An attributed label informing the receiver of the selection.
  *      @param result The data detector result that was selected.
  *      @param point The point within @c attributedLabel where the result was tapped.
  */
 - (void)attributedLabel:(NIAttributedLabel *)attributedLabel didSelectTextCheckingResult:(NSTextCheckingResult *)result atPoint:(CGPoint)point;
 
 /**
- * Asks the delegate whether an action sheet should be displayed at the given point.
+ * Asks the receiver whether an action sheet should be displayed at the given point.
  *
- * If this method is not implemented by the delegate then @c actionSheet will always be displayed.
+ * If this method is not implemented by the receiver then @c actionSheet will always be displayed.
  *
  * @c actionSheet will be populated with actions that match the data type that was selected. For
  * example, a link will have the actions "Open in Safari" and "Copy URL". A phone number will have
@@ -150,7 +162,7 @@ typedef enum {
 /** @name Accessing and Detecting Links */
 
 /**
- * Whether to automatically detect links in the string.
+ * A Booelan value indicating whether to automatically detect links in the string.
  *
  * By default this is disabled.
  *
@@ -211,8 +223,8 @@ typedef enum {
 /**
  * The text color of detected links.
  *
- * The default text is [UIColor blueColor]. If linkColor is assigned nil then the link text color
- * attributes will not be changed.
+ * The default color is [UIColor blueColor]. If linkColor is assigned nil then the link attributes
+ * will not be changed.
  *
  *  @image html NIAttributedLabelLinkAttributes.png "Link attributes"
  *
@@ -242,7 +254,7 @@ typedef enum {
  */
 
 /**
- * A dictionary of attributes to apply to links.
+ * A dictionary of CoreText attributes to apply to links.
  *
  * This dictionary must contain CoreText attributes. These attributes are applied after the color
  * and link styles have been applied to the link.
@@ -265,7 +277,7 @@ typedef enum {
  */
 
 /**
- * The underline style for the whole text.
+ * The underline style for the entire label.
  *
  * By default this is @c kCTUnderlineStyleNone.
  *
@@ -275,7 +287,7 @@ typedef enum {
  */
 
 /**
- * The underline style modifier for the whole text.
+ * The underline style modifier for the entire label.
  *
  * By default this is @c kCTUnderlinePatternSolid.
  *
@@ -370,13 +382,51 @@ typedef enum {
  *      @fn NIAttributedLabel::setTextKern:range:
  */
 
+/** @name Adding Inline Images */
+
+/**
+ * Inserts the given image inline at the given index in the receiver's text.
+ *
+ * The image will have no margins.
+ * The image's vertical text alignment will be NIVerticalTextAlignmentBottom.
+ *
+ *      @param image The image to add to the receiver.
+ *      @param index The index into the receiver's text at which to insert the image.
+ *      @fn NIAttributedLabel::insertImage:atIndex:
+ */
+
+/**
+ * Inserts the given image inline at the given index in the receiver's text.
+ *
+ * The image's vertical text alignment will be NIVerticalTextAlignmentBottom.
+ *
+ *      @param image The image to add to the receiver.
+ *      @param index The index into the receiver's text at which to insert the image.
+ *      @param margins The space around the image on all sides in points.
+ *      @fn NIAttributedLabel::insertImage:atIndex:margins:
+ */
+
+/**
+ * Inserts the given image inline at the given index in the receiver's text.
+ *
+ *      @attention
+ *      Images do not currently support NIVerticalTextAlignmentTop and the receiver will fire
+ *      multiple debug assertions if you attempt to use it.
+ *
+ *      @param image The image to add to the receiver.
+ *      @param index The index into the receiver's text at which to insert the image.
+ *      @param margins The space around the image on all sides in points.
+ *      @param verticalTextAlignment The position of the text relative to the image.
+ *      @fn NIAttributedLabel::insertImage:atIndex:margins:verticalTextAlignment:
+ */
+
 /** @name Accessing the Delegate */
 
 /**
  * The delegate of the attributed-label object.
  *
  * The delegate must adopt the NIAttributedLabelDelegate protocol. The NIAttributedLabel class,
- * which does not retain the delegate, invokes each protocol method the delegate implements.
+ * which does not strong the delegate, invokes each protocol method the delegate implements.
  *
  *      @fn NIAttributedLabel::delegate
  */

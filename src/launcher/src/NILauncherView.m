@@ -22,6 +22,10 @@
 #import "NimbusPagingScrollView.h"
 #import "NimbusCore.h"
 
+#if !defined(__has_feature) || !__has_feature(objc_arc)
+#error "Nimbus requires ARC support."
+#endif
+
 static NSString* const kPageReuseIdentifier = @"page";
 const NSInteger NILauncherViewGridBasedOnButtonSize = -1;
 
@@ -36,6 +40,7 @@ static const NSTimeInterval kAnimateToPageDuration = 0.2;
 @property (nonatomic, readwrite, retain) UIPageControl* pager;
 @property (nonatomic, readwrite, assign) NSInteger numberOfPages;
 @property (nonatomic, readwrite, retain) NIViewRecycler* viewRecycler;
+- (void)updateLayoutForPage:(NILauncherPageView *)page;
 @end
 
 

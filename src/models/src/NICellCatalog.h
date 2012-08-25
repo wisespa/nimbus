@@ -16,6 +16,21 @@
 
 #import "NICellFactory.h"
 
+typedef CGFloat (^NICellDrawRectBlock)(CGRect rect, id object, UITableViewCell* cell);
+
+/**
+ * An object that will draw the contents of the cell using a provided block.
+ *
+ *      @ingroup TableCellCatalog
+ */
+@interface NIDrawRectBlockCellObject : NICellObject
+// Designated initializer.
+- (id)initWithBlock:(NICellDrawRectBlock)block object:(id)object;
++ (id)objectWithBlock:(NICellDrawRectBlock)block object:(id)object;
+@property (nonatomic, copy) NICellDrawRectBlock block;
+@property (nonatomic, retain) id object;
+@end
+
 /**
  * An object for displaying a single-line title in a table view cell.
  *
@@ -31,8 +46,8 @@
 - (id)initWithTitle:(NSString *)title;
 + (id)objectWithTitle:(NSString *)title image:(UIImage *)image;
 + (id)objectWithTitle:(NSString *)title;
-@property (nonatomic, readwrite, copy) NSString* title;
-@property (nonatomic, readwrite, retain) UIImage* image;
+@property (nonatomic, copy) NSString* title;
+@property (nonatomic, retain) UIImage* image;
 @end
 
 /**
@@ -49,8 +64,8 @@
 + (id)objectWithTitle:(NSString *)title subtitle:(NSString *)subtitle image:(UIImage *)image;
 - (id)initWithTitle:(NSString *)title subtitle:(NSString *)subtitle;
 + (id)objectWithTitle:(NSString *)title subtitle:(NSString *)subtitle;
-@property (nonatomic, readwrite, copy) NSString* subtitle;
-@property (nonatomic, readwrite, assign) UITableViewCellStyle cellStyle;
+@property (nonatomic, copy) NSString* subtitle;
+@property (nonatomic, assign) UITableViewCellStyle cellStyle;
 @end
 
 /**
@@ -62,6 +77,15 @@
  *      @ingroup TableCellCatalog
  */
 @interface NITextCell : UITableViewCell <NICell>
+@end
+
+/**
+ * A cell that renders its contents using a block.
+ *
+ *      @ingroup TableCellCatalog
+ */
+@interface NIDrawRectBlockCell : UITableViewCell <NICell>
+@property (nonatomic, retain) UIView* blockView;
 @end
 
 /**

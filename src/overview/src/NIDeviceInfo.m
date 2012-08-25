@@ -21,6 +21,10 @@
 #import <mach/mach.h>
 #import <mach/mach_host.h>
 
+#if !defined(__has_feature) || !__has_feature(objc_arc)
+#error "Nimbus requires ARC support."
+#endif
+
 // Static local state.
 static BOOL                 sIsCaching = NO;
 static BOOL                 sLastUpdateResult = NO;
@@ -37,7 +41,7 @@ NSString* NIStringFromBytes(unsigned long long bytes) {
 
   // Determine what magnitude the number of bytes is by shifting off 10 bits at a time
   // (equivalent to dividing by 1024).
-  NSInteger magnitude = 0;
+  unsigned long magnitude = 0;
   unsigned long long highbits = bytes;
   unsigned long long inverseBits = ~((unsigned long long)0x3FF);
   while ((highbits & inverseBits)

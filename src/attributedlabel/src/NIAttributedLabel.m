@@ -20,22 +20,49 @@
 #import "NSMutableAttributedString+NimbusAttributedLabel.h"
 #import <QuartzCore/QuartzCore.h>
 
+#if !defined(__has_feature) || !__has_feature(objc_arc)
+#error "Nimbus requires ARC support."
+#endif
+
+static const CGFloat kVMargin = 5.0f;
 static const NSTimeInterval kLongPressTimeInterval = 0.5;
 static const CGFloat kLongPressGutter = 22;
-static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
+
+// The touch gutter is the amount of space around a link that will still register as tapping
+// "within" the link.
+static const CGFloat kTouchGutter = 22;
+
+@interface NIAttributedLabelImage : NSObject
+@property (nonatomic, assign) NSInteger index;
+@property (nonatomic, strong) UIImage* image;
+@property (nonatomic, assign) UIEdgeInsets margins;
+@property (nonatomic, assign) NIVerticalTextAlignment verticalTextAlignment;
+@property (nonatomic, assign) NIAttributedLabel* label;
+@end
+
+@implementation NIAttributedLabelImage
+@synthesize index;
+@synthesize image;
+@synthesize margins;
+@synthesize verticalTextAlignment;
+@synthesize label;
+@end
+
 
 @interface NIAttributedLabel() <UIActionSheetDelegate>
-@property (nonatomic, readwrite, retain) NSMutableAttributedString* mutableAttributedString;
-@property (nonatomic, readwrite, assign) CTFrameRef textFrame;
-@property (readwrite, assign) BOOL detectingLinks; // Atomic.
-@property (nonatomic, readwrite, assign) BOOL linksHaveBeenDetected;
-@property (nonatomic, readwrite, copy) NSArray* detectedlinkLocations;
-@property (nonatomic, readwrite, retain) NSMutableArray* explicitLinkLocations;
-@property (nonatomic, readwrite, retain) NSTextCheckingResult* originalLink;
-@property (nonatomic, readwrite, retain) NSTextCheckingResult* touchedLink;
-@property (nonatomic, readwrite, retain) NSTimer* longPressTimer;
-@property (nonatomic, readwrite, assign) CGPoint touchPoint;
-@property (nonatomic, readwrite, retain) NSTextCheckingResult* actionSheetLink;
+@property (nonatomic, strong) NSMutableAttributedString* mutableAttributedString;
+@property (nonatomic, assign) CTFrameRef textFrame;
+@property (assign) BOOL detectingLinks; // Atomic.
+@property (nonatomic, assign) BOOL linksHaveBeenDetected;
+@property (nonatomic, copy) NSArray* detectedlinkLocations;
+@property (nonatomic, strong) NSMutableArray* explicitLinkLocations;
+@property (nonatomic, strong) NSTextCheckingResult* originalLink;
+@property (nonatomic, strong) NSTextCheckingResult* touchedLink;
+@property (nonatomic, strong) NSTimer* longPressTimer;
+@property (nonatomic, assign) CGPoint touchPoint;
+@property (nonatomic, strong) NSTextCheckingResult* actionSheetLink;
+@property (nonatomic, strong) NSArray *accessibleElements;
+@property (nonatomic, strong) NSMutableArray *images;
 @end
 
 
@@ -67,6 +94,7 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
 @synthesize longPressTimer = _longPressTimer;
 @synthesize touchPoint = _touchPoint;
 @synthesize actionSheetLink = _actionSheetLink;
+@synthesize accessibleElements = _accessibleElements;
 @synthesize autoDetectLinks = _autoDetectLinks;
 @synthesize deferLinkDetection = _deferLinkDetection;
 @synthesize dataDetectorTypes = _dataDetectorTypes;
@@ -81,6 +109,7 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
 @synthesize highlightedLinkBackgroundColor = _highlightedLinkBackgroundColor;
 @synthesize linksHaveUnderlines = _linksHaveUnderlines;
 @synthesize attributesForLinks = _attributesForLinks;
+@synthesize images;
 @synthesize delegate = _delegate;
 
 
@@ -129,10 +158,11 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 - (void)resetTextFrame {
-	if (nil != self.textFrame) {
-		CFRelease(self.textFrame);
-		self.textFrame = nil;
-	}
+  if (nil != self.textFrame) {
+    CFRelease(self.textFrame);
+    self.textFrame = nil;
+  }
+  self.accessibleElements = nil;
 }
 
 
@@ -157,36 +187,22 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-- (void)setBounds:(CGRect)bounds {
-  bounds = UIEdgeInsetsInsetRect(bounds, kBoundsInsets);
-
-  BOOL boundsDidChange = !CGRectEqualToRect(self.bounds, bounds);
-  
-  [super setBounds:bounds];
-
-  if (boundsDidChange) {
-    [self attributedTextDidChange];
-  }
-}
-
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
 - (CGSize)sizeThatFits:(CGSize)size {
-	if (nil == self.mutableAttributedString) {
+  if (nil == self.mutableAttributedString) {
     return CGSizeZero;
   }
 
   CFAttributedStringRef attributedStringRef = (__bridge CFAttributedStringRef)self.mutableAttributedString;
   CTFramesetterRef framesetter = CTFramesetterCreateWithAttributedString(attributedStringRef);
-	CFRange fitCFRange = CFRangeMake(0,0);
-	CGSize newSize = CTFramesetterSuggestFrameSizeWithConstraints(framesetter, CFRangeMake(0, 0), NULL, size, &fitCFRange);
+  CFRange fitCFRange = CFRangeMake(0,0);
+  CGSize newSize = CTFramesetterSuggestFrameSizeWithConstraints(framesetter, CFRangeMake(0, 0), NULL, size, &fitCFRange);
 
-	if (nil != framesetter) {
+  if (nil != framesetter) {
     CFRelease(framesetter);
     framesetter = nil;
   }
 
-	return CGSizeMake(ceilf(newSize.width), ceilf(newSize.height));
+  return CGSizeMake(ceilf(newSize.width), ceilf(newSize.height));
 }
 
 
@@ -233,6 +249,9 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
     self.linksHaveBeenDetected = NO;
     [self removeAllExplicitLinks];
     
+    // Remove all images.
+    self.images = nil;
+    
     [self attributedTextDidChange];
   }
 }
@@ -248,6 +267,9 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
     self.detectedlinkLocations = nil;
     self.linksHaveBeenDetected = NO;
     [self removeAllExplicitLinks];
+    
+    // Remove all images.
+    self.images = nil;
     
     [self attributedTextDidChange];
   }
@@ -287,9 +309,13 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 #if __IPHONE_OS_VERSION_MIN_REQUIRED < NIIOS_6_0
 - (void)setTextAlignment:(UITextAlignment)textAlignment {
-  // We assume that the UILabel implementation will call setNeedsDisplay. Where we don't call super
-  // we call setNeedsDisplay ourselves.
-  [super setTextAlignment:textAlignment];
+  // UILabel doesn't implement UITextAlignmentJustify, so we can't call super when this is the case
+  // or the app will crash.
+  if (textAlignment != UITextAlignmentJustify) {
+    // We assume that the UILabel implementation will call setNeedsDisplay. Where we don't call super
+    // we call setNeedsDisplay ourselves.
+    [super setTextAlignment:textAlignment];
+  }
   
   if (nil != self.mutableAttributedString) {
     CTTextAlignment alignment = [self.class alignmentFromUITextAlignment:textAlignment];
@@ -359,7 +385,7 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 - (void)setFont:(UIFont *)font {
-	[super setFont:font];
+  [super setFont:font];
 
   [self.mutableAttributedString setFont:font];
 }
@@ -470,7 +496,7 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-- (void)sethighlightedLinkBackgroundColor:(UIColor *)highlightedLinkBackgroundColor {
+- (void)setHighlightedLinkBackgroundColor:(UIColor *)highlightedLinkBackgroundColor {
   if (_highlightedLinkBackgroundColor != highlightedLinkBackgroundColor) {
     _highlightedLinkBackgroundColor = highlightedLinkBackgroundColor;
 
@@ -495,6 +521,24 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
     _attributesForLinks = attributesForLinks;
 
     [self attributedTextDidChange];
+  }
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+- (void)setExplicitLinkLocations:(NSMutableArray *)explicitLinkLocations {
+  if (_explicitLinkLocations != explicitLinkLocations) {
+    _explicitLinkLocations = explicitLinkLocations;
+    self.accessibleElements = nil;
+  }
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+- (void)setDetectedlinkLocations:(NSArray *)detectedlinkLocations{
+  if (_detectedlinkLocations != detectedlinkLocations) {
+    _detectedlinkLocations = detectedlinkLocations;
+    self.accessibleElements = nil;
   }
 }
 
@@ -554,12 +598,12 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 - (CGRect)getLineBounds:(CTLineRef)line point:(CGPoint) point {
   CGFloat ascent = 0.0f;
-	CGFloat descent = 0.0f;
-	CGFloat leading = 0.0f;
-	CGFloat width = (CGFloat)CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
-	CGFloat height = ascent + descent;
-	
-	return CGRectMake(point.x, point.y - descent, width, height);
+  CGFloat descent = 0.0f;
+  CGFloat leading = 0.0f;
+  CGFloat width = (CGFloat)CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
+  CGFloat height = ascent + descent;
+  
+  return CGRectMake(point.x, point.y - descent, width, height);
 }
 
 
@@ -587,7 +631,7 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
     }
   }
 
-	return foundResult;
+  return foundResult;
 }
 
 
@@ -620,49 +664,160 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 - (NSTextCheckingResult *)linkAtPoint:(CGPoint)point {
-  static const CGFloat kVMargin = 5.0f;
-	if (!CGRectContainsPoint(CGRectInset(self.bounds, 0, -kVMargin), point)) {
+  if (!CGRectContainsPoint(CGRectInset(self.bounds, 0, -kVMargin), point)) {
     return nil;
   }
 
   CFArrayRef lines = CTFrameGetLines(self.textFrame);
-	if (!lines) return nil;
-	CFIndex count = CFArrayGetCount(lines);
+  if (!lines) return nil;
+  CFIndex count = CFArrayGetCount(lines);
 
   NSTextCheckingResult* foundLink = nil;
 
-	CGPoint origins[count];
-	CTFrameGetLineOrigins(self.textFrame, CFRangeMake(0,0), origins);
+  CGPoint origins[count];
+  CTFrameGetLineOrigins(self.textFrame, CFRangeMake(0,0), origins);
   
   CGAffineTransform transform = [self _transformForCoreText];
   CGFloat verticalOffset = [self _verticalOffsetForBounds:self.bounds];
 
-  // Our bounds may have a non-zero offset, so we must take this into account when doing hit
-  // detection.
-  point.x += kBoundsInsets.left;
-  point.y -= kBoundsInsets.top;
-
   for (int i = 0; i < count; i++) {
-		CGPoint linePoint = origins[i];
+    CGPoint linePoint = origins[i];
 
-		CTLineRef line = CFArrayGetValueAtIndex(lines, i);
-		CGRect flippedRect = [self getLineBounds:line point:linePoint];
+    CTLineRef line = CFArrayGetValueAtIndex(lines, i);
+    CGRect flippedRect = [self getLineBounds:line point:linePoint];
     CGRect rect = CGRectApplyAffineTransform(flippedRect, transform);
 
-		rect = CGRectInset(rect, 0, -kVMargin);
+    rect = CGRectInset(rect, 0, -kVMargin);
     rect = CGRectOffset(rect, 0, verticalOffset);
 
-		if (CGRectContainsPoint(rect, point)) {
-			CGPoint relativePoint = CGPointMake(point.x-CGRectGetMinX(rect),
+    if (CGRectContainsPoint(rect, point)) {
+      CGPoint relativePoint = CGPointMake(point.x-CGRectGetMinX(rect),
                                           point.y-CGRectGetMinY(rect));
-			CFIndex idx = CTLineGetStringIndexForPosition(line, relativePoint);
-			foundLink = [self linkAtIndex:idx];
-			if (foundLink) {
+      CFIndex idx = CTLineGetStringIndexForPosition(line, relativePoint);
+      foundLink = [self linkAtIndex:idx];
+      if (foundLink) {
         return foundLink;
       }
-		}
-	}
-	return nil;
+    }
+  }
+  return nil;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+- (CGRect)_rectForRange:(NSRange)range inLine:(CTLineRef)line lineOrigin:(CGPoint)lineOrigin {
+  CGRect rectForRange = CGRectZero;
+  CFArrayRef runs = CTLineGetGlyphRuns(line);
+  CFIndex runCount = CFArrayGetCount(runs);
+
+  // Iterate through each of the "runs" (i.e. a chunk of text) and find the runs that
+  // intersect with the range.
+  for (CFIndex k = 0; k < runCount; k++) {
+    CTRunRef run = CFArrayGetValueAtIndex(runs, k);
+
+    CFRange stringRunRange = CTRunGetStringRange(run);
+    NSRange lineRunRange = NSMakeRange(stringRunRange.location, stringRunRange.length);
+    NSRange intersectedRunRange = NSIntersectionRange(lineRunRange, range);
+
+    if (intersectedRunRange.length == 0) {
+      // This run doesn't intersect the range, so skip it.
+      continue;
+    }
+
+    CGFloat ascent = 0.0f;
+    CGFloat descent = 0.0f;
+    CGFloat leading = 0.0f;
+    CGFloat width = (CGFloat)CTRunGetTypographicBounds(run,
+                                                       CFRangeMake(0, 0),
+                                                       &ascent,
+                                                       &descent,
+                                                       &leading);
+    CGFloat height = ascent + descent;
+
+    CGFloat xOffset = CTLineGetOffsetForStringIndex(line, CTRunGetStringRange(run).location, nil);
+
+    CGRect linkRect = CGRectMake(lineOrigin.x + xOffset - leading, lineOrigin.y - descent, width + leading, height);
+
+    linkRect = CGRectIntegral(linkRect);
+    linkRect = CGRectInset(linkRect, -2, 0);
+
+    if (CGRectIsEmpty(rectForRange)) {
+      rectForRange = linkRect;
+
+    } else {
+      rectForRange = CGRectUnion(rectForRange, linkRect);
+    }
+  }
+  
+  return rectForRange;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+- (BOOL)isPoint:(CGPoint)point nearLink:(NSTextCheckingResult *)link {
+  CFArrayRef lines = CTFrameGetLines(self.textFrame);
+  if (nil == lines) {
+    return NO;
+  }
+  CFIndex count = CFArrayGetCount(lines);
+  CGPoint lineOrigins[count];
+  CTFrameGetLineOrigins(self.textFrame, CFRangeMake(0, 0), lineOrigins);
+
+  CGAffineTransform transform = [self _transformForCoreText];
+  CGFloat verticalOffset = [self _verticalOffsetForBounds:self.bounds];
+
+  NSRange linkRange = link.range;
+
+  BOOL isNearLink = NO;
+  for (int i = 0; i < count; i++) {
+    CTLineRef line = CFArrayGetValueAtIndex(lines, i);
+
+    CGRect linkRect = [self _rectForRange:linkRange inLine:line lineOrigin:lineOrigins[i]];
+
+    if (!CGRectIsEmpty(linkRect)) {
+      linkRect = CGRectApplyAffineTransform(linkRect, transform);
+      linkRect = CGRectOffset(linkRect, 0, verticalOffset);
+      linkRect = CGRectInset(linkRect, -kTouchGutter, -kTouchGutter);
+      if (CGRectContainsPoint(linkRect, point)) {
+        isNearLink = YES;
+        break;
+      }
+    }
+  }
+
+  return isNearLink;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+- (NSArray *)_rectsForLink:(NSTextCheckingResult *)link {
+  CFArrayRef lines = CTFrameGetLines(self.textFrame);
+  if (nil == lines) {
+    return nil;
+  }
+  CFIndex count = CFArrayGetCount(lines);
+  CGPoint lineOrigins[count];
+  CTFrameGetLineOrigins(self.textFrame, CFRangeMake(0, 0), lineOrigins);
+
+  CGAffineTransform transform = [self _transformForCoreText];
+  CGFloat verticalOffset = [self _verticalOffsetForBounds:self.bounds];
+
+  NSRange linkRange = link.range;
+
+  NSMutableArray* rects = [NSMutableArray array];
+  for (int i = 0; i < count; i++) {
+    CTLineRef line = CFArrayGetValueAtIndex(lines, i);
+
+    CGRect linkRect = [self _rectForRange:linkRange inLine:line lineOrigin:lineOrigins[i]];
+
+    if (!CGRectIsEmpty(linkRect)) {
+      linkRect = CGRectApplyAffineTransform(linkRect, transform);
+      linkRect = CGRectOffset(linkRect, 0, verticalOffset);
+      [rects addObject:[NSValue valueWithCGRect:linkRect]];
+    }
+  }
+
+  return [rects copy];
 }
 
 
@@ -671,7 +826,7 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
   [super touchesBegan:touches withEvent:event];
 
   UITouch* touch = [touches anyObject];
-	CGPoint point = [touch locationInView:self];
+  CGPoint point = [touch locationInView:self];
 
   self.touchedLink = [self linkAtPoint:point];
   self.touchPoint = point;
@@ -691,21 +846,25 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
   [super touchesMoved:touches withEvent:event];
   
   UITouch* touch = [touches anyObject];
-	CGPoint point = [touch locationInView:self];
+  CGPoint point = [touch locationInView:self];
 
   // If the user moves their finger away from the original link, deselect it.
   // If the user moves their finger back to the original link, reselect it.
   // Don't allow other links to be selected other than the original link.
-  NSTextCheckingResult* newLink = [self linkAtPoint:point];
-  if (newLink != self.touchedLink) {
-    if (newLink != self.originalLink) {
-      [self.longPressTimer invalidate];
-      self.longPressTimer = nil;
-      self.touchedLink = nil;
-      [self setNeedsDisplay];
+
+  if (nil != self.originalLink) {
+    NSTextCheckingResult* oldTouchedLink = self.touchedLink;
+
+    if ([self isPoint:point nearLink:self.originalLink]) {
+      self.touchedLink = self.originalLink;
 
     } else {
-      self.touchedLink = self.originalLink;
+      self.touchedLink = nil;
+    }
+
+    if (oldTouchedLink != self.touchedLink) {
+      [self.longPressTimer invalidate];
+      self.longPressTimer = nil;
       [self setNeedsDisplay];
     }
   }
@@ -733,20 +892,22 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
   self.longPressTimer = nil;
 
   UITouch* touch = [touches anyObject];
-	CGPoint point = [touch locationInView:self];
+  CGPoint point = [touch locationInView:self];
 
-  NSTextCheckingResult* linkTouched = [self linkAtPoint:point];
+  if (nil != self.originalLink) {
+    if ([self isPoint:point nearLink:self.originalLink]) {
+      // This old-style method is deprecated, please update to the newer delegate method that supports
+      // more data types.
+      NIDASSERT(![self.delegate respondsToSelector:@selector(attributedLabel:didSelectLink:atPoint:)]);
 
-  if ([self.touchedLink isEqual:linkTouched]) {
-    // This old-style method is deprecated, please update to the newer delegate method that supports
-    // more data types.
-    NIDASSERT(![self.delegate respondsToSelector:@selector(attributedLabel:didSelectLink:atPoint:)]);
-    if ([self.delegate respondsToSelector:@selector(attributedLabel:didSelectTextCheckingResult:atPoint:)]) {
-      [self.delegate attributedLabel:self didSelectTextCheckingResult:linkTouched atPoint:point];
+      if ([self.delegate respondsToSelector:@selector(attributedLabel:didSelectTextCheckingResult:atPoint:)]) {
+        [self.delegate attributedLabel:self didSelectTextCheckingResult:self.originalLink atPoint:point];
+      }
     }
   }
 
   self.touchedLink = nil;
+  self.originalLink = nil;
 
   [self setNeedsDisplay];
 }
@@ -760,6 +921,7 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
   self.longPressTimer = nil;
 
   self.touchedLink = nil;
+  self.originalLink = nil;
 
   [self setNeedsDisplay];
 }
@@ -859,11 +1021,11 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-// We apply the link styles immediately before we render the attributed string. This
-// composites the link styles with the existing styles without losing any information. This
+// We apply the additional styles immediately before we render the attributed string. This
+// composites the styles with the existing styles without losing any information. This
 // makes it possible to turn off links or remove them altogether without losing the existing
 // style information.
-- (NSMutableAttributedString *)mutableAttributedStringWithLinkStylesApplied {
+- (NSMutableAttributedString *)mutableAttributedStringWithAdditions {
   NSMutableAttributedString* attributedString = [self.mutableAttributedString mutableCopy];
   if (self.autoDetectLinks) {
     [self _applyLinkStyleWithResults:self.detectedlinkLocations
@@ -873,14 +1035,94 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
   [self _applyLinkStyleWithResults:self.explicitLinkLocations
                 toAttributedString:attributedString];
 
+  if (self.images.count > 0) {
+    // Sort the label images in reverse order by index so that when we add them the string's indices
+    // remain relatively accurate to the original string. This is necessary because we're inserting
+    // spaces into the string.
+    [self.images sortUsingComparator:^NSComparisonResult(NIAttributedLabelImage* obj1, NIAttributedLabelImage*  obj2) {
+      if (obj1.index < obj2.index) {
+        return NSOrderedDescending;
+      } else if (obj1.index > obj2.index) {
+        return NSOrderedAscending;
+      } else {
+        return NSOrderedSame;
+      }
+    }];
+
+    for (NIAttributedLabelImage *labelImage in self.images) {
+      CTRunDelegateCallbacks callbacks;
+      callbacks.version = kCTRunDelegateVersion1;
+      callbacks.dealloc = ImageDelegateDeallocCallback;
+      callbacks.getAscent = ImageDelegateGetAscentCallback;
+      callbacks.getDescent = ImageDelegateGetDescentCallback;
+      callbacks.getWidth = ImageDelegateGetWidthCallback;
+      CTRunDelegateRef delegate = CTRunDelegateCreate(&callbacks, (__bridge void *)labelImage);
+
+      NSMutableAttributedString* space = [[NSMutableAttributedString alloc] initWithString:@" "];
+      CFAttributedStringSetAttribute((__bridge CFMutableAttributedStringRef)space, CFRangeMake(0, 1), kCTRunDelegateAttributeName, delegate);
+      [attributedString insertAttributedString:space atIndex:labelImage.index];
+    }
+  }
+
   return attributedString;
 }
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-- (void)drawTextInRect:(CGRect)rect {
-  rect = UIEdgeInsetsInsetRect(rect, UIEdgeInsetsMake(-kBoundsInsets.top, -kBoundsInsets.left, -kBoundsInsets.bottom, -kBoundsInsets.right));
+- (void)drawImages {
+  if (0 == self.images.count) {
+    return;
+  }
 
+  CGContextRef ctx = UIGraphicsGetCurrentContext();
+
+  CFArrayRef lines = CTFrameGetLines(self.textFrame);
+  CFIndex lineCount = CFArrayGetCount(lines);
+  CGPoint lineOrigins[lineCount];
+  CTFrameGetLineOrigins(self.textFrame, CFRangeMake(0, 0), lineOrigins);
+
+  for (CFIndex i = 0; i < lineCount; i++) {
+    CTLineRef line = CFArrayGetValueAtIndex(lines, i);
+    CFArrayRef runs = CTLineGetGlyphRuns(line);
+    CFIndex runCount = CFArrayGetCount(runs);
+    CGPoint lineOrigin = lineOrigins[i];
+    
+    // Iterate through each of the "runs" (i.e. a chunk of text) and find the runs that
+    // intersect with the range.
+    for (CFIndex k = 0; k < runCount; k++) {
+      CTRunRef run = CFArrayGetValueAtIndex(runs, k);
+      NSDictionary *runAttributes = (__bridge NSDictionary *)CTRunGetAttributes(run);
+      CTRunDelegateRef delegate = (__bridge CTRunDelegateRef)[runAttributes valueForKey:(__bridge id)kCTRunDelegateAttributeName];
+      if (nil == delegate) {
+        continue;
+      }
+      NIAttributedLabelImage* labelImage = (__bridge NIAttributedLabelImage *)CTRunDelegateGetRefCon(delegate);
+
+      CGFloat ascent = 0.0f;
+      CGFloat descent = 0.0f;
+      CGFloat leading = 0.0f;
+      CGFloat width = (CGFloat)CTRunGetTypographicBounds(run,
+                                                         CFRangeMake(0, 0),
+                                                         &ascent,
+                                                         &descent,
+                                                         &leading);
+      CGFloat height = ascent + descent;
+      
+      CGFloat xOffset = CTLineGetOffsetForStringIndex(line, CTRunGetStringRange(run).location, nil);
+      
+      CGRect rect = CGRectMake(lineOrigin.x + xOffset - leading, lineOrigin.y - descent, width + leading, height);
+      UIEdgeInsets flippedMargins = labelImage.margins;
+      CGFloat top = flippedMargins.top;
+      flippedMargins.top = flippedMargins.bottom;
+      flippedMargins.bottom = top;
+      CGContextDrawImage(ctx, UIEdgeInsetsInsetRect(rect, flippedMargins), labelImage.image.CGImage);
+    }
+  }
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+- (void)drawTextInRect:(CGRect)rect {
   if (NIVerticalTextAlignmentTop != self.verticalTextAlignment) {
     rect.origin.y = [self _verticalOffsetForBounds:rect];
   }
@@ -889,14 +1131,14 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
     [self detectLinks];
   }
 
-  NSMutableAttributedString* attributedStringWithLinks = [self mutableAttributedStringWithLinkStylesApplied];
+  NSMutableAttributedString* attributedStringWithLinks = [self mutableAttributedStringWithAdditions];
   if (self.detectedlinkLocations.count > 0 || self.explicitLinkLocations.count > 0) {
     self.userInteractionEnabled = YES;
   }
 
   if (nil != attributedStringWithLinks) {
     CGContextRef ctx = UIGraphicsGetCurrentContext();
-		CGContextSaveGState(ctx);
+    CGContextSaveGState(ctx);
 
     CGAffineTransform transform = [self _transformForCoreText];
     CGContextConcatCTM(ctx, transform);
@@ -906,16 +1148,15 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
       CTFramesetterRef framesetter = CTFramesetterCreateWithAttributedString(attributedString);
 
       CGMutablePathRef path = CGPathCreateMutable();
-      // We must tranform the path rectangle in order to draw the text correctly for bottom/middle
+      // We must transform the path rectangle in order to draw the text correctly for bottom/middle
       // vertical alignment modes.
-			CGPathAddRect(path, &transform, rect);
-      if (nil != self.shadowColor) {
-        CGContextSetShadowWithColor(ctx, self.shadowOffset, self.shadowBlur, self.shadowColor.CGColor);
-      }
+      CGPathAddRect(path, &transform, rect);
       self.textFrame = CTFramesetterCreateFrame(framesetter, CFRangeMake(0, 0), path, NULL);
-			CGPathRelease(path);
-			CFRelease(framesetter);
+      CGPathRelease(path);
+      CFRelease(framesetter);
     }
+    
+    [self drawImages];
 
     // Draw the tapped link's highlight.
     if ((nil != self.touchedLink || nil != self.actionSheetLink) && nil != self.highlightedLinkBackgroundColor) {
@@ -938,55 +1179,9 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
           continue;
         }
 
-        // Iterate through each of the "runs" (i.e. a chunk of text) and find the runs that
-        // intersect with the link's range. For each of these runs, draw the highlight frame
-        // around the part of the run that intersects with the link.
-        CGRect highlightRect = CGRectZero;
-        CFArrayRef runs = CTLineGetGlyphRuns(line);
-        CFIndex runCount = CFArrayGetCount(runs);
-        for (CFIndex k = 0; k < runCount; k++) {
-          CTRunRef run = CFArrayGetValueAtIndex(runs, k);
-
-          CFRange stringRunRange = CTRunGetStringRange(run);
-          NSRange lineRunRange = NSMakeRange(stringRunRange.location, stringRunRange.length);
-          NSRange intersectedRunRange = NSIntersectionRange(lineRunRange, linkRange);
-          if (intersectedRunRange.length == 0) {
-            continue;
-          }
-
-          CGFloat ascent = 0.0f;
-          CGFloat descent = 0.0f;
-          CGFloat leading = 0.0f;
-          CGFloat width = (CGFloat)CTRunGetTypographicBounds(run,
-                                                             CFRangeMake(0, 0), 
-                                                             &ascent, 
-                                                             &descent, 
-                                                             &leading);
-          CGFloat height = ascent + descent;
-
-          CGFloat xOffset = CTLineGetOffsetForStringIndex(line, 
-                                                          CTRunGetStringRange(run).location, 
-                                                          nil);
-
-          CGRect linkRect = CGRectMake(lineOrigins[i].x + xOffset - leading,
-                                       lineOrigins[i].y - descent,
-                                       width + leading,
-                                       height);
-
-          linkRect = CGRectIntegral(linkRect);
-          linkRect = CGRectInset(linkRect, -2, 0);
-
-          if (CGRectIsEmpty(highlightRect)) {
-            highlightRect = linkRect;
-
-          } else {
-            highlightRect = CGRectUnion(highlightRect, linkRect);
-          }
-        }
+        CGRect highlightRect = [self _rectForRange:linkRange inLine:line lineOrigin:lineOrigins[i]];
 
         if (!CGRectIsEmpty(highlightRect)) {
-          highlightRect = CGRectOffset(highlightRect, -kBoundsInsets.left, -rect.origin.y - kBoundsInsets.top - kBoundsInsets.bottom);
-
           CGFloat pi = (CGFloat)M_PI;
 
           CGFloat radius = 5.0f;
@@ -1009,12 +1204,77 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
       }
     }
 
+    if (nil != self.shadowColor) {
+      CGContextSetShadowWithColor(ctx, self.shadowOffset, self.shadowBlur, self.shadowColor.CGColor);
+    }
+
     CTFrameDraw(self.textFrame, ctx);
-		CGContextRestoreGState(ctx);
+    CGContextRestoreGState(ctx);
 
   } else {
     [super drawTextInRect:rect];
   }
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////
+#pragma mark - Accessibility
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+- (NSArray *)accessibleElements {
+  if (nil != _accessibleElements) {
+    return _accessibleElements;
+  }
+
+  NSMutableArray* accessibleElements = [NSMutableArray array];
+
+  NSArray* allLinks = [[NSArray arrayWithArray:self.detectedlinkLocations]
+                       arrayByAddingObjectsFromArray:self.explicitLinkLocations];
+
+  for (NSTextCheckingResult* result in allLinks) {
+    NSArray* rectsForLink = [self _rectsForLink:result];
+    if (!NIIsArrayWithObjects(rectsForLink)) {
+      continue;
+    }
+
+    NSString* label = [self.mutableAttributedString.string substringWithRange:result.range];
+    for (NSValue* rectValue in rectsForLink) {
+      UIAccessibilityElement* element = [[UIAccessibilityElement alloc] initWithAccessibilityContainer:self];
+      element.accessibilityLabel = label;
+      element.accessibilityFrame = [self convertRect:rectValue.CGRectValue toView:self.window];
+      element.accessibilityTraits = UIAccessibilityTraitLink;
+      [accessibleElements addObject:element];
+    }
+  }
+
+  _accessibleElements = [accessibleElements copy];
+  return _accessibleElements;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+- (BOOL)isAccessibilityElement {
+  return NO;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+- (NSInteger)accessibilityElementCount  {
+  return self.accessibleElements.count;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+- (id)accessibilityElementAtIndex:(NSInteger)index {
+  return [self.accessibleElements objectAtIndex:index];
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+- (NSInteger)indexOfAccessibilityElement:(id)element {
+  return [self.accessibleElements indexOfObject:element];
 }
 
 
@@ -1075,6 +1335,81 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
 }
 
 
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void ImageDelegateDeallocCallback(void* refCon) {
+  NIAttributedLabelImage *labelImage = (__bridge NIAttributedLabelImage *)refCon;
+  [labelImage.label.images removeObject:labelImage];
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+CGFloat ImageDelegateGetAscentCallback(void* refCon) {
+  NIAttributedLabelImage *labelImage = (__bridge NIAttributedLabelImage *)refCon;
+  switch (labelImage.verticalTextAlignment) {
+    case NIVerticalTextAlignmentTop:
+      // Top alignment is unsupported, using bottom alignment instead.
+      NIDASSERT(labelImage.verticalTextAlignment != NIVerticalTextAlignmentTop);
+    case NIVerticalTextAlignmentBottom: {
+    default:
+      return labelImage.image.size.height + labelImage.margins.top;
+    }
+    case NIVerticalTextAlignmentMiddle: {
+      return floorf(labelImage.image.size.height / 2) + labelImage.margins.top;
+    }
+  }
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+CGFloat ImageDelegateGetDescentCallback(void* refCon) {
+  NIAttributedLabelImage *labelImage = (__bridge NIAttributedLabelImage *)refCon;
+  switch (labelImage.verticalTextAlignment) {
+    case NIVerticalTextAlignmentTop:
+      // Top alignment is unsupported, using bottom alignment instead.
+      NIDASSERT(labelImage.verticalTextAlignment != NIVerticalTextAlignmentTop);
+    case NIVerticalTextAlignmentBottom: {
+    default:
+      return labelImage.margins.bottom;
+    }
+    case NIVerticalTextAlignmentMiddle: {
+      return ceilf(labelImage.image.size.height / 2) + labelImage.margins.bottom;
+    }
+  }
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+CGFloat ImageDelegateGetWidthCallback(void* refCon) {
+  NIAttributedLabelImage *labelImage = (__bridge NIAttributedLabelImage *)refCon;
+  return labelImage.image.size.width + labelImage.margins.left + labelImage.margins.right;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+- (void)insertImage:(UIImage *)image atIndex:(NSInteger)index {
+  [self insertImage:image atIndex:index margins:UIEdgeInsetsZero verticalTextAlignment:NIVerticalTextAlignmentBottom];
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+- (void)insertImage:(UIImage *)image atIndex:(NSInteger)index margins:(UIEdgeInsets)margins {
+  [self insertImage:image atIndex:index margins:margins verticalTextAlignment:NIVerticalTextAlignmentBottom];
+}
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+- (void)insertImage:(UIImage *)image atIndex:(NSInteger)index margins:(UIEdgeInsets)margins verticalTextAlignment:(NIVerticalTextAlignment)verticalTextAlignment {
+  NIAttributedLabelImage* labelImage = [[NIAttributedLabelImage alloc] init];
+  labelImage.index = index;
+  labelImage.image = image;
+  labelImage.margins = margins;
+  labelImage.verticalTextAlignment = verticalTextAlignment;
+  if (nil == self.images) {
+    self.images = [NSMutableArray array];
+  }
+  [self.images addObject:labelImage];
+}
+
 @end
 
 
@@ -1087,13 +1422,15 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 #if __IPHONE_OS_VERSION_MIN_REQUIRED < NIIOS_6_0
 + (CTTextAlignment)alignmentFromUITextAlignment:(UITextAlignment)alignment {
-  switch (alignment) {
-		case UITextAlignmentLeft: return kCTLeftTextAlignment;
-		case UITextAlignmentCenter: return kCTCenterTextAlignment;
-		case UITextAlignmentRight: return kCTRightTextAlignment;
-		case UITextAlignmentJustify: return kCTJustifiedTextAlignment;
+  // UITextAlignmentJustify is not part of the UITextAlignment enumeration, so we cast to NSInteger
+  // to tell Xcode not to coerce us into only using real UITextAlignment valus.
+  switch ((NSInteger)alignment) {
+    case UITextAlignmentLeft: return kCTLeftTextAlignment;
+    case UITextAlignmentCenter: return kCTCenterTextAlignment;
+    case UITextAlignmentRight: return kCTRightTextAlignment;
+    case UITextAlignmentJustify: return kCTJustifiedTextAlignment;
     default: return kCTNaturalTextAlignment;
-	}
+  }
 }
 #else
 + (CTTextAlignment)alignmentFromUITextAlignment:(NSTextAlignment)alignment {
@@ -1103,7 +1440,7 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
     case NSTextAlignmentRight: return kCTRightTextAlignment;
     case NSTextAlignmentJustified: return kCTJustifiedTextAlignment;
     default: return kCTNaturalTextAlignment;
-	}
+  }
 }
 #endif
 
@@ -1111,15 +1448,15 @@ static UIEdgeInsets kBoundsInsets = {-5, -5, -5, -5};
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 #if __IPHONE_OS_VERSION_MIN_REQUIRED < NIIOS_6_0
 + (CTLineBreakMode)lineBreakModeFromUILineBreakMode:(UILineBreakMode)lineBreakMode {
-	switch (lineBreakMode) {
-		case UILineBreakModeWordWrap: return kCTLineBreakByWordWrapping;
-		case UILineBreakModeCharacterWrap: return kCTLineBreakByCharWrapping;
-		case UILineBreakModeClip: return kCTLineBreakByClipping;
-		case UILineBreakModeHeadTruncation: return kCTLineBreakByTruncatingHead;
-		case UILineBreakModeTailTruncation: return kCTLineBreakByTruncatingTail;
-		case UILineBreakModeMiddleTruncation: return kCTLineBreakByTruncatingMiddle;
-		default: return 0;
-	}
+  switch (lineBreakMode) {
+    case UILineBreakModeWordWrap: return kCTLineBreakByWordWrapping;
+    case UILineBreakModeCharacterWrap: return kCTLineBreakByCharWrapping;
+    case UILineBreakModeClip: return kCTLineBreakByClipping;
+    case UILineBreakModeHeadTruncation: return kCTLineBreakByTruncatingHead;
+    case UILineBreakModeTailTruncation: return kCTLineBreakByTruncatingTail;
+    case UILineBreakModeMiddleTruncation: return kCTLineBreakByTruncatingMiddle;
+    default: return 0;
+  }
 }
 #else
 + (CTLineBreakMode)lineBreakModeFromUILineBreakMode:(NSLineBreakMode)lineBreakMode {

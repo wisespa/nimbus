@@ -1,5 +1,5 @@
 //
-// Copyright 2011 Jeff Verkoeyen
+// Copyright 2011-2012 Jeff Verkoeyen
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,27 +14,48 @@
 // limitations under the License.
 //
 
-#import "StaticIndexedTableViewController.h"
+#import "IndexedTableModelViewController.h"
 
-@interface StaticIndexedTableViewController()
+#import "NimbusModels.h"
+#import "NimbusCore.h"
+
+//
+// What's going on in this file:
+//
+// This is a demo of creating a NITableViewModel with an indexed group of objects.
+//
+// You will find the following Nimbus features used:
+//
+// [models]
+// NITableViewModel
+// NICellFactory
+//
+// This controller requires the following frameworks:
+//
+// Foundation.framework
+// UIKit.framework
+//
+
+@interface IndexedTableModelViewController ()
 @property (nonatomic, readwrite, retain) NITableViewModel* model;
-@property (nonatomic, readwrite, retain) UISearchDisplayController* searchController;
 @end
 
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////
-@implementation StaticIndexedTableViewController
+@implementation IndexedTableModelViewController
 
 @synthesize model = _model;
-@synthesize searchController = _searchController;
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
 - (id)initWithStyle:(UITableViewStyle)style {
-  if ((self = [super initWithStyle:UITableViewStylePlain])) {
-    self.title = NSLocalizedString(@"Indexed Model", @"Controller Title: Indexed Model");
+  if ((self = [super initWithStyle:UITableViewStyleGrouped])) {
+    self.title = @"Indexed Model";
     
+    // When using sectioned indexes we create our model with sectioned objects. Each section header
+    // is generally the alphabetic letter that the contents of that section are grouped by. This
+    // may be alphabetic by last name or first name, or by some other arbitrary sorting algorithm.
+    // Whatever the algorithm may be, you should ensure that the groups are sorted in a way that
+    // matches the index sorting algorithm.
+    //
+    // In this example we use a static list of names that are sorted by last name and
+    // NITableViewModelSectionIndexAlphabetical as the index type.
     NSArray* tableContents =
     [NSArray arrayWithObjects:
      @"A",
@@ -77,44 +98,34 @@
      
      @"X",
      [NITitleCellObject objectWithTitle:@"Charles Xavier"],
-
      nil];
-    
-    // We use NICellFactory to create the cell views.
+
     _model = [[NITableViewModel alloc] initWithSectionedArray:tableContents
                                                      delegate:(id)[NICellFactory class]];
-    [_model setSectionIndexType:NITableViewModelSectionIndexAlphabetical showsSearch:YES showsSummary:NO];
+
+    // NITableViewModelSectionIndexAlphabetical generates an index that shows the entire alphabetic
+    // range from A-Z. When the user taps any of these letters the model will jump to the closest
+    // section for the tapped letter.
+    //
+    // Experiment:
+    // Try changing the index type to NITableViewModelSectionIndexDynamic. You should notice that
+    // the index is now generated from the section headers. In nearly every case you will want to
+    // use the alphabetical index.
+    [_model setSectionIndexType:NITableViewModelSectionIndexAlphabetical
+                    showsSearch:NO
+                   showsSummary:NO];
   }
   return self;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
 - (void)viewDidLoad {
   [super viewDidLoad];
-
-  // Only assign the table view's data source after the view has loaded.
-  // You must be careful when you call self.tableView in general because it will call loadView
-  // if the view has not been loaded yet. You do not need to clear the data source when the
-  // view is unloaded (more importantly: you shouldn't, due to the reason just outlined
-  // regarding loadView).
+  
   self.tableView.dataSource = _model;
-
-  // Create a dummy search display controller just to show the use of a search bar.
-  UISearchBar* searchBar = [[UISearchBar alloc] init];
-  [searchBar sizeToFit];
-  _searchController = [[UISearchDisplayController alloc] initWithSearchBar:searchBar contentsController:self];
-  self.tableView.tableHeaderView = _searchController.searchBar;
-
-  // Show that entering the "edit" mode does not allow modifications to this static model.
-  self.navigationItem.rightBarButtonItem = self.editButtonItem;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
 - (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation {
   return NIIsSupportedOrientation(toInterfaceOrientation);
 }
-
 
 @end

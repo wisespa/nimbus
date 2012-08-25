@@ -21,6 +21,7 @@
 #import "CustomTextAttributedLabelViewController.h"
 #import "LinksAttributedLabelViewController.h"
 #import "DataTypesAttributedLabelViewController.h"
+#import "ImagesAttributedLabelViewController.h"
 #import "PerformanceAttributedLabelViewController.h"
 #import "LongTapAttributedLabelViewController.h"
 #import "InterfaceBuilderAttributedLabelViewController.h"
@@ -40,6 +41,9 @@
 #import "RestoringLauncherViewController.h"
 #import "BadgedLauncherViewController.h"
 
+// Navigation Appearance
+#import "NavigationAppearanceViewController.h"
+
 // Network Image
 #import "BasicInstantiationNetworkImageViewController.h"
 #import "ContentModesNetworkImageViewController.h"
@@ -47,6 +51,19 @@
 // Paging Scroll View
 #import "BasicInstantiationPagingScrollViewController.h"
 #import "VerticalPagingScrollViewController.h"
+
+// Tables
+#import "BasicInstantiationTableModelViewController.h"
+#import "SectionedTableModelViewController.h"
+#import "IndexedTableModelViewController.h"
+#import "ActionsTableModelViewController.h"
+#import "RadioGroupTableModelViewController.h"
+#import "NestedRadioGroupTableModelViewController.h"
+#import "ModalRadioGroupTableModelViewController.h"
+#import "FormCellCatalogViewController.h"
+#import "NetworkBlockCellsViewController.h"
+#import "BlockCellsViewController.h"
+#import "SnapshotRotationTableViewController.h"
 
 // Web Controller
 #import "ExtraActionsWebViewController.h"
@@ -111,7 +128,6 @@
     // array of objects.
     NSArray* sectionedObjects =
     [NSArray arrayWithObjects:
-
      // An NSString in a sectioned array denotes the start of a new section. It's also the label of
      // the section header.
      @"Attributed Label",
@@ -148,6 +164,11 @@
                              toObject:
       [NISubtitleCellObject objectWithTitle:@"Data Types"
                                    subtitle:@"Detecting different data types"]],
+     [_actions attachNavigationAction:
+      NIPushControllerAction([ImagesAttributedLabelViewController class])
+                             toObject:
+      [NISubtitleCellObject objectWithTitle:@"Images"
+                                   subtitle:@"Adding inline images"]],
      [_actions attachNavigationAction:
       NIPushControllerAction([PerformanceAttributedLabelViewController class])
                              toObject:
@@ -214,6 +235,38 @@
                              toObject:
       [NISubtitleCellObject objectWithTitle:@"Badges"
                                    subtitle:@"Adding badges to launcher items"]],
+     
+     @"Navigation Apperance",
+     [_actions attachNavigationAction:
+      ^(id object, UIViewController* controller) {
+        NavigationAppearanceViewController *appearanceController = 
+        [[NavigationAppearanceViewController alloc] init];
+        appearanceController.changeBarStyle = YES;
+        [controller.navigationController pushViewController:appearanceController animated:YES];
+        return NO;
+      } toObject:
+      [NISubtitleCellObject objectWithTitle:@"Bar Style"
+                                   subtitle:@"Modify navigation bar style"]],
+     [_actions attachNavigationAction:
+      ^(id object, UIViewController* controller) {
+        NavigationAppearanceViewController *appearanceController = 
+          [[NavigationAppearanceViewController alloc] init];
+        appearanceController.changeTintColor = YES;
+        [controller.navigationController pushViewController:appearanceController animated:YES];
+        return NO;
+      } toObject:
+      [NISubtitleCellObject objectWithTitle:@"Tint Color"
+                                   subtitle:@"Modify navigation bar tint color"]], 
+     [_actions attachNavigationAction:
+      ^(id object, UIViewController* controller) {
+        NavigationAppearanceViewController *appearanceController = 
+        [[NavigationAppearanceViewController alloc] init];
+        appearanceController.changeBackgroundImage = YES;
+        [controller.navigationController pushViewController:appearanceController animated:YES];
+        return NO;
+      } toObject:
+      [NISubtitleCellObject objectWithTitle:@"Background Image"
+                                   subtitle:@"Modify navigation bar background image"]],
 
      @"Network Image",
      [_actions attachNavigationAction:
@@ -239,6 +292,63 @@
       [NISubtitleCellObject objectWithTitle:@"Vertical Paging"
                                    subtitle:@"Using a vertical layout"]],
 
+     @"Table Models",
+     [_actions attachNavigationAction:
+      NIPushControllerAction([BasicInstantiationTableModelViewController class])
+                             toObject:
+      [NISubtitleCellObject objectWithTitle:@"Basic Instantiation"
+                                   subtitle:@"How to create a table view model"]],
+     [_actions attachNavigationAction:
+      NIPushControllerAction([SectionedTableModelViewController class])
+                             toObject:
+      [NISubtitleCellObject objectWithTitle:@"Sectioned Model"
+                                   subtitle:@"Sectioned table view models"]],
+     [_actions attachNavigationAction:
+      NIPushControllerAction([IndexedTableModelViewController class])
+                             toObject:
+      [NISubtitleCellObject objectWithTitle:@"Indexed Model"
+                                   subtitle:@"Indexed table view models"]],
+     [_actions attachNavigationAction:
+      NIPushControllerAction([ActionsTableModelViewController class])
+                             toObject:
+      [NISubtitleCellObject objectWithTitle:@"Actions"
+                                   subtitle:@"Handling actions in table views"]],
+     [_actions attachNavigationAction:
+      NIPushControllerAction([RadioGroupTableModelViewController class])
+                             toObject:
+      [NISubtitleCellObject objectWithTitle:@"Radio Group"
+                                   subtitle:@"How to use radio groups"]],
+     [_actions attachNavigationAction:
+      NIPushControllerAction([NestedRadioGroupTableModelViewController class])
+                             toObject:
+      [NISubtitleCellObject objectWithTitle:@"Nested Radio Group"
+                                   subtitle:@"How to nest radio groups"]],
+     [_actions attachNavigationAction:
+      NIPushControllerAction([ModalRadioGroupTableModelViewController class])
+                             toObject:
+      [NISubtitleCellObject objectWithTitle:@"Modal Radio Group"
+                                   subtitle:@"Customizing presentation"]],
+     [_actions attachNavigationAction:
+      NIPushControllerAction([FormCellCatalogViewController class])
+                             toObject:
+      [NISubtitleCellObject objectWithTitle:@"Form Cell Catalog"
+                                   subtitle:@"Table view cells for forms"]],
+     [_actions attachNavigationAction:
+      NIPushControllerAction([BlockCellsViewController class])
+                             toObject:
+      [NISubtitleCellObject objectWithTitle:@"Block Cells"
+                                   subtitle:@"Rendering cells with blocks"]],
+     [_actions attachNavigationAction:
+      NIPushControllerAction([NetworkBlockCellsViewController class])
+                             toObject:
+      [NISubtitleCellObject objectWithTitle:@"Network Block Cells"
+                                   subtitle:@"Rendering network images with blocks"]],
+     [_actions attachNavigationAction:
+      NIPushControllerAction([SnapshotRotationTableViewController class])
+                             toObject:
+      [NISubtitleCellObject objectWithTitle:@"Snapshot Rotation"
+                                   subtitle:@"Rotating table views with snapshots"]],
+     
      @"Web Controller",
      [_actions attachNavigationAction:
       ^(id object, UIViewController* controller) {

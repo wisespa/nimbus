@@ -1,7 +1,6 @@
 //
-// Copyright 2011 Jeff Verkoeyen
-//
-// Forked from Three20 June 10, 2011 - Copyright 2009-2011 Facebook
+// Copyright 2012 Edward Euan Lau
+// Copyright 2011-2012 Jeff Verkoeyen
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,15 +13,12 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
 
-#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 
-// Documentation for these additions is found in the .m file.
-@interface NSData (NimbusCore)
-
-@property (nonatomic, readonly) NSString* md5Hash;
-
-@property (nonatomic, readonly) NSString* sha1Hash;
-
+// All docs are in the .m.
+@interface NavigationAppearanceViewController : UIViewController
+@property (nonatomic, assign) BOOL changeTintColor;
+@property (nonatomic, assign) BOOL changeBackgroundImage;
+@property (nonatomic, assign) BOOL changeBarStyle;
 @end

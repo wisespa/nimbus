@@ -1,5 +1,5 @@
 //
-// Copyright 2011 Jeff Verkoeyen
+// Copyright 2011-2012 Jeff Verkoeyen
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,28 @@
 // limitations under the License.
 //
 
-#import "FormCellCatalogTableViewController.h"
+#import "FormCellCatalogViewController.h"
+
+#import "NimbusModels.h"
+#import "NimbusCore.h"
+
+//
+// What's going on in this file:
+//
+// This is a catalog of all of Nimbus' form cells. This example does not go into details on the
+// individual cells. It is meant to provide a quick overview of the cells.
+//
+// You will find the following Nimbus features used:
+//
+// [models]
+// NITableViewModel
+// NICellFactory
+//
+// This controller requires the following frameworks:
+//
+// Foundation.framework
+// UIKit.framework
+//
 
 // This enumeration is used in the radio group mapping.
 typedef enum {
@@ -30,43 +51,35 @@ typedef enum {
   SubRadioOption3,
 } SubRadioOptions;
 
-@interface FormCellCatalogTableViewController() <UITextFieldDelegate, NIRadioGroupDelegate>
+@interface FormCellCatalogViewController () <UITextFieldDelegate, NIRadioGroupDelegate>
 @property (nonatomic, readwrite, retain) NITableViewModel* model;
 
-// A radio group object allows us to easily maintain radio group-style interactions in the table
-// view.
+// A radio group object allows us to easily maintain radio group-style interactions in a table view.
 @property (nonatomic, readwrite, retain) NIRadioGroup* radioGroup;
+
+// Each radio group object maintains a specific set of table objects, so in order to have multiple
+// radio groups you need to instantiate multiple radio group objects.
 @property (nonatomic, readwrite, retain) NIRadioGroup* subRadioGroup;
-@property (nonatomic, readwrite, retain) NITableViewActions* actions;
 @end
 
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////
-@implementation FormCellCatalogTableViewController
+@implementation FormCellCatalogViewController
 
 @synthesize model = _model;
 @synthesize radioGroup = _radioGroup;
 @synthesize subRadioGroup = _subRadioGroup;
-@synthesize actions = _actions;
 
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
 - (id)initWithStyle:(UITableViewStyle)style {
   if ((self = [super initWithStyle:UITableViewStyleGrouped])) {
-    self.title = NSLocalizedString(@"Form Cells", @"Controller Title: Form Cells");
-
-    _actions = [[NITableViewActions alloc] initWithController:self];
-
+    self.title = @"Form Cell Catalog";
+    
     _radioGroup = [[NIRadioGroup alloc] init];
     _radioGroup.delegate = self;
-
+    
     _subRadioGroup = [[NIRadioGroup alloc] initWithController:self];
     _subRadioGroup.delegate = self;
     _subRadioGroup.cellTitle = @"Selection";
     _subRadioGroup.controllerTitle = @"Make a Selection";
-
+    
     [_subRadioGroup mapObject:[NISubtitleCellObject objectWithTitle:@"Sub Radio 1"
                                                            subtitle:@"First option"]
                  toIdentifier:SubRadioOption1];
@@ -76,7 +89,7 @@ typedef enum {
     [_subRadioGroup mapObject:[NISubtitleCellObject objectWithTitle:@"Sub Radio 3"
                                                            subtitle:@"Third option"]
                  toIdentifier:SubRadioOption3];
-
+    
     NSArray* tableContents =
     [NSArray arrayWithObjects:
      @"Radio Group",
@@ -91,29 +104,17 @@ typedef enum {
                toIdentifier:RadioOption3],
      @"Radio Group Controller",
      _subRadioGroup,
-
+     
      @"NITextInputFormElement",
      [NITextInputFormElement textInputElementWithID:0 placeholderText:@"Placeholder" value:nil],
      [NITextInputFormElement textInputElementWithID:0 placeholderText:@"Placeholder" value:@"Initial value"],
      [NITextInputFormElement textInputElementWithID:1 placeholderText:nil value:@"Disabled input field" delegate:self],
      [NITextInputFormElement passwordInputElementWithID:0 placeholderText:@"Password" value:nil],
      [NITextInputFormElement passwordInputElementWithID:0 placeholderText:@"Password" value:@"Password"],
-
+     
      @"NISwitchFormElement",
      [NISwitchFormElement switchElementWithID:0 labelText:@"Switch" value:NO],
      [NISwitchFormElement switchElementWithID:0 labelText:@"Switch with a really long label that will be cut off" value:YES],
-
-     @"NIButtonFormElement",
-     [_actions attachTapAction:^(id object, UIViewController *controller) {
-        UIAlertView* alertView =
-        [[UIAlertView alloc] initWithTitle:@"This is an alert!"
-                                   message:@"Don't panic."
-                                  delegate:nil
-                         cancelButtonTitle:@"Neat!"
-                         otherButtonTitles:nil];
-        [alertView show];
-        return YES;
-      } toObject:[NITitleCellObject objectWithTitle:@"Button with alert"]],
 
      @"NISliderFormElement",
      [NISliderFormElement sliderElementWithID:0
@@ -121,7 +122,7 @@ typedef enum {
                                         value:45
                                  minimumValue:0
                                  maximumValue:100],
-
+     
      @"NISegmentedControlFormElement",
      [NISegmentedControlFormElement segmentedControlElementWithID:0
                                                         labelText:@"Text segments"
@@ -134,8 +135,8 @@ typedef enum {
                                                                    [UIImage imageNamed:@"star.png"],
                                                                    [UIImage imageNamed:@"circle.png"],
                                                                    nil]
-                                                    selectedIndex:-1 
-                                                  didChangeTarget:self 
+                                                    selectedIndex:-1
+                                                  didChangeTarget:self
                                                 didChangeSelector:@selector(segmentedControlWithImagesDidChangeValue:)],
      @"NIDatePickerFormElement",
      [NIDatePickerFormElement datePickerElementWithID:0
@@ -144,13 +145,13 @@ typedef enum {
                                        datePickerMode:UIDatePickerModeDateAndTime],
      [NIDatePickerFormElement datePickerElementWithID:0
                                             labelText:@"Date only"
-                                                 date:[NSDate date] 
+                                                 date:[NSDate date]
                                        datePickerMode:UIDatePickerModeDate],
      [NIDatePickerFormElement datePickerElementWithID:0
-                                            labelText:@"Time only" 
+                                            labelText:@"Time only"
                                                  date:[NSDate date]
-                                       datePickerMode:UIDatePickerModeTime 
-                                      didChangeTarget:self 
+                                       datePickerMode:UIDatePickerModeTime
+                                      didChangeTarget:self
                                     didChangeSelector:@selector(datePickerDidChangeValue:)],
      [NIDatePickerFormElement datePickerElementWithID:0
                                             labelText:@"Countdown"
@@ -160,7 +161,7 @@ typedef enum {
     
     self.radioGroup.selectedIdentifier = RadioOption1;
     self.subRadioGroup.selectedIdentifier = SubRadioOption1;
-
+    
     // We let the Nimbus cell factory create the cells.
     _model = [[NITableViewModel alloc] initWithSectionedArray:tableContents
                                                      delegate:(id)[NICellFactory class]];
@@ -168,58 +169,41 @@ typedef enum {
   return self;
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
 - (void)viewDidLoad {
   [super viewDidLoad];
 
-  // Only assign the table view's data source after the view has loaded.
-  // You must be careful when you call self.tableView in general because it will call loadView
-  // if the view has not been loaded yet. You do not need to clear the data source when the
-  // view is unloaded (more importantly: you shouldn't, due to the reason just outlined
-  // regarding loadView).
   self.tableView.dataSource = _model;
-
+  
   self.tableView.delegate = [self.radioGroup forwardingTo:
-                             [self.subRadioGroup forwardingTo:
-                              [self.actions forwardingTo:self.tableView.delegate]]];
-
+                             [self.subRadioGroup forwardingTo:self.tableView.delegate]];
+  
   // When including text editing cells in table views you should provide a means for the user to
   // stop editing the control. To do this we add a gesture recognizer to the table view.
-  UITapGestureRecognizer* tap = [[UITapGestureRecognizer alloc] initWithTarget:self
-                                                                        action:@selector(didTapTableView)];
+  UITapGestureRecognizer* tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(didTapTableView)];
+
   // We still want the table view to be able to process touch events when we tap.
   tap.cancelsTouchesInView = NO;
+
   [self.tableView addGestureRecognizer:tap];
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
 - (BOOL)shouldAutorotateToInterfaceOrientation:(UIInterfaceOrientation)toInterfaceOrientation {
   return NIIsSupportedOrientation(toInterfaceOrientation);
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
 - (void)segmentedControlWithImagesDidChangeValue:(UISegmentedControl *)segmentedControl {
-    NIDPRINT(@"Segmented control changed value to index %d", segmentedControl.selectedSegmentIndex);
+  NIDPRINT(@"Segmented control changed value to index %d", segmentedControl.selectedSegmentIndex);
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
 - (void)datePickerDidChangeValue:(UIDatePicker *)picker {
-    NIDPRINT(@"Time only date picker changed value to %@", 
-             [NSDateFormatter localizedStringFromDate:picker.date 
-                                            dateStyle:NSDateFormatterNoStyle
-                                            timeStyle:NSDateFormatterShortStyle]);
+  NIDPRINT(@"Time only date picker changed value to %@",
+           [NSDateFormatter localizedStringFromDate:picker.date
+                                          dateStyle:NSDateFormatterNoStyle
+                                          timeStyle:NSDateFormatterShortStyle]);
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////
-#pragma mark -
-#pragma mark UITextFieldDelegate
+#pragma mark - UITextFieldDelegate
 
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
 - (BOOL)textFieldShouldBeginEditing:(UITextField *)textField {
   if (textField.tag == 1) {
     return NO;
@@ -227,14 +211,8 @@ typedef enum {
   return YES;
 }
 
+#pragma mark - UITableViewDelegate
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////
-#pragma mark -
-#pragma mark UITableViewDelegate
-
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
 - (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
   // Customize the presentation of certain types of cells.
   if ([cell isKindOfClass:[NITextInputFormElementCell class]]) {
@@ -250,14 +228,8 @@ typedef enum {
   }
 }
 
-
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////
 #pragma mark - NIRadioGroupDelegate
 
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
 - (void)radioGroup:(NIRadioGroup *)radioGroup didSelectIdentifier:(NSInteger)identifier {
   if (radioGroup == self.radioGroup) {
     NSLog(@"Radio group selection: %d", identifier);
@@ -266,8 +238,6 @@ typedef enum {
   }
 }
 
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
 - (NSString *)radioGroup:(NIRadioGroup *)radioGroup textForIdentifier:(NSInteger)identifier {
   switch (identifier) {
     case SubRadioOption1:
@@ -280,14 +250,8 @@ typedef enum {
   return nil;
 }
 
+#pragma mark - Gesture Recognizers
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////
-#pragma mark -
-#pragma mark Gesture Recognizers
-
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
 - (void)didTapTableView {
   [self.view endEditing:YES];
 }

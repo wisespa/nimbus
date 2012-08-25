@@ -24,6 +24,10 @@
 #import "NIOverviewSwizzling.h"
 #import "NIOverviewLogger.h"
 
+#if !defined(__has_feature) || !__has_feature(objc_arc)
+#error "Nimbus requires ARC support."
+#endif
+
 // Static state.
 static CGFloat  sOverviewHeight   = 60;
 static BOOL     sOverviewIsAwake  = NO;
@@ -71,8 +75,8 @@ void NIOverviewLogMethod(const char* message, unsigned length, BOOL withSyslogBa
   static NSDateFormatter* formatter = nil;
   if (nil == formatter) {
     formatter = [[NSDateFormatter alloc] init];
-    [formatter setTimeStyle:kCFDateFormatterMediumStyle];
-    [formatter setDateStyle:kCFDateFormatterMediumStyle];
+    [formatter setTimeStyle:NSDateFormatterMediumStyle];
+    [formatter setDateStyle:NSDateFormatterMediumStyle];
   }
 
   // Don't autorelease here in an attempt to minimize autorelease thrashing in tight

@@ -23,6 +23,10 @@
 #import "NIDeviceInfo.h"
 #import "NIOverviewPageView.h"
 
+#if !defined(__has_feature) || !__has_feature(objc_arc)
+#error "Nimbus requires ARC support."
+#endif
+
 @interface NIOverviewView()
 
 - (CGFloat)pageHorizontalMargin;
@@ -116,7 +120,7 @@
 - (void)layoutPages {
   _pagingScrollView.contentSize = [self contentSizeForPagingScrollView];
 
-  for (NSInteger ix = 0; ix < [_pageViews count]; ++ix) {
+  for (NSUInteger ix = 0; ix < [_pageViews count]; ++ix) {
     UIView* pageView = [_pageViews objectAtIndex:ix];
     pageView.frame = [self frameForPageAtIndex:ix];
   }
@@ -128,7 +132,7 @@
   CGFloat offset = _pagingScrollView.contentOffset.x;
   CGFloat pageWidth = _pagingScrollView.bounds.size.width;
 
-  return floorf(offset / pageWidth);
+  return (NSInteger)(offset / pageWidth);
 }
 
 

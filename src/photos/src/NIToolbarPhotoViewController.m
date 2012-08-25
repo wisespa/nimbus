@@ -20,6 +20,9 @@
 
 #import "NimbusCore.h"
 
+#if !defined(__has_feature) || !__has_feature(objc_arc)
+#error "Nimbus requires ARC support."
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -171,6 +174,8 @@
 - (void)loadView {
   [super loadView];
 
+  self.view.backgroundColor = [UIColor blackColor];
+
   CGRect bounds = self.view.bounds;
 
   // Toolbar Setup
@@ -220,8 +225,6 @@
 - (void)viewWillAppear:(BOOL)animated {
   [super viewWillAppear:animated];
 
-  [NINavigationAppearance pushAppearanceForNavigationController:self.navigationController];
-
   [[UIApplication sharedApplication] setStatusBarStyle: (NIIsPad()
                                                          ? UIStatusBarStyleBlackOpaque
                                                          : UIStatusBarStyleBlackTranslucent)
@@ -233,14 +236,6 @@
 
   _previousButton.enabled = [self.photoAlbumView hasPrevious];
   _nextButton.enabled = [self.photoAlbumView hasNext];
-}
-
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-- (void)viewWillDisappear:(BOOL)animated {
-  [super viewWillDisappear:animated];
-
-  [NINavigationAppearance popAppearanceForNavigationController:self.navigationController animated:YES];
 }
 
 
@@ -514,12 +509,16 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 - (void)didTapNextButton {
   [self.photoAlbumView moveToNextAnimated:self.animateMovingToNextAndPreviousPhotos];
+  
+  [self refreshChromeState];
 }
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 - (void)didTapPreviousButton {
   [self.photoAlbumView moveToPreviousAnimated:self.animateMovingToNextAndPreviousPhotos];
+
+  [self refreshChromeState];
 }
 
 
